@@ -1,0 +1,14 @@
+# flask
+# flask-pymongo
+# flask-bcrypt
+# flask-cors
+# flask-login
+# detoxify
+# sentence-transformers
+Flask==2.0.1
+Flask-PyMongo==2.3.0
+pymongo==4.0.1
+Flask-Bcrypt==0.7.1
+Flask-Login==0.5.0
+detoxify==0.5.0
+sentence-transformers==2.2.2

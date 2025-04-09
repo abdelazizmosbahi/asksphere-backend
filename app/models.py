@@ -154,7 +154,6 @@ class Member(UserMixin):
             "dateCreated": notification.dateCreated
         })
 
-# Rest of the classes (Community, Question, Answer, Vote, Member_Community, AIContentFilter, CommunityValidator) remain unchanged
 class Community:
     def __init__(self, id, name, description):
         self.id = id
@@ -377,7 +376,7 @@ class AIContentFilter:
 
 class CommunityValidator:
     def __init__(self, db):
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.model = SentenceTransformer('all-mpnet-base-v2')  # Updated to the best model
         self.db = db
         self.description_embeddings = {}
         self.community_info = {}
@@ -399,7 +398,7 @@ class CommunityValidator:
 
         description_embedding = self.description_embeddings[community_id_str]
         similarity_score = util.cos_sim(content_embedding, description_embedding)[0][0].item()
-        threshold = 0.12  # Current threshold
+        threshold = 0.11  # Updated threshold based on testing
         is_relevant = similarity_score >= threshold
 
         # Debug logging

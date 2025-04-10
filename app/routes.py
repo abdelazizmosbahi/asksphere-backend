@@ -3,7 +3,7 @@ from app import app, mongo, bcrypt, login_manager
 from flask import json, request, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import User, Member, Community, Question, Answer, Vote, Member_Community, AIContentFilter, CommunityValidator
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson import ObjectId
 from flask_cors import CORS  # Import CORS
 from app import ai_content_filter
@@ -1044,3 +1044,384 @@ def get_answer(answer_id):
         }), 200
     except Exception as e:
         return jsonify({'message': 'Error fetching answer', 'error': str(e)}), 500
+    
+@app.route('/api/users/<user_id>/profile', methods=['GET'])
+@login_required
+def get_user_profile(user_id):
+    print("get_user_profile route called")
+    try:
+        # Fetch the user data
+        user = mongo.db.users.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+
+        # Count the user's questions
+        questions_count = mongo.db.questions.count_documents({"memberId": ObjectId(user_id)})
+
+        # Count the user's answers
+        answers_count = mongo.db.answers.count_documents({"memberId": ObjectId(user_id)})
+
+        # Prepare the response
+        profile_data = {
+            "username": user["username"],
+            "avatar": user.get("avatar"),
+            "questionsCount": questions_count,
+            "answersCount": answers_count,
+            "status": user.get("status", "active"),
+            "reputation": user.get("reputation", 0),
+            "dateJoined": user.get("dateJoined").isoformat() if user.get("dateJoined") else None,
+            "badges": user.get("badges", [])
+        }
+        return jsonify(profile_data), 200
+    except Exception as e:
+        return jsonify({'message': 'Error fetching user profile', 'error': str(e)}), 400
+
+@app.route('/api/users/me/stats', methods=['GET'])
+@login_required
+def get_user_stats():
+    try:
+        user_id = ObjectId(current_user.id)
+        
+        # Get current date and calculate time ranges
+        now = datetime.utcnow()
+        one_year_ago = now - timedelta(days=365)
+        one_week_ago = now - timedelta(days=7)
+        current_month = now.month - 1  # 0-based index
+        prev_month = current_month - 1 if current_month > 0 else 11
+        
+        # Initialize monthly arrays with zeros
+        monthly_questions = [0] * 12
+        monthly_answers = [0] * 12
+        monthly_votes = [0] * 12
+        
+        # Get monthly questions
+        questions = mongo.db.questions.aggregate([
+            {"$match": {
+                "memberId": user_id,
+                "dateCreated": {"$gte": one_year_ago}
+            }},
+            {"$group": {
+                "_id": {"$month": "$dateCreated"},
+                "count": {"$sum": 1}
+            }}
+        ])
+        
+        for q in questions:
+            month_index = q['_id'] - 1
+            if 0 <= month_index < 12:
+                monthly_questions[month_index] = q['count']
+        
+        # Get monthly answers
+        answers = mongo.db.answers.aggregate([
+            {"$match": {
+                "memberId": user_id,
+                "dateCreated": {"$gte": one_year_ago}
+            }},
+            {"$group": {
+                "_id": {"$month": "$dateCreated"},
+                "count": {"$sum": 1}
+            }}
+        ])
+        
+        for a in answers:
+            month_index = a['_id'] - 1
+            if 0 <= month_index < 12:
+                monthly_answers[month_index] = a['count']
+        
+        # Get monthly votes
+        votes = mongo.db.votes.aggregate([
+            {"$match": {
+                "memberId": user_id,
+                "date": {"$gte": one_year_ago}
+            }},
+            {"$group": {
+                "_id": {"$month": "$date"},
+                "count": {"$sum": 1}
+            }}
+        ])
+        
+        for v in votes:
+            month_index = v['_id'] - 1
+            if 0 <= month_index < 12:
+                monthly_votes[month_index] = v['count']
+        
+        # Weekly activity (last 7 days)
+        weekly_activity = [0] * 7  # Sunday to Saturday
+        
+        # Get daily activity counts (questions + answers)
+        for i in range(7):
+            day_start = now - timedelta(days=(6-i))
+            day_end = day_start + timedelta(days=1)
+            
+            # Count questions
+            weekly_activity[i] += mongo.db.questions.count_documents({
+                "memberId": user_id,
+                "dateCreated": {"$gte": day_start, "$lt": day_end}
+            })
+            
+            # Count answers
+            weekly_activity[i] += mongo.db.answers.count_documents({
+                "memberId": user_id,
+                "dateCreated": {"$gte": day_start, "$lt": day_end}
+            })
+        
+        # Calculate trends
+        def calculate_trend(current, previous):
+            if previous == 0:
+                return 100 if current > 0 else 0
+            return round(((current - previous) / previous) * 100)
+        
+        question_trend = calculate_trend(monthly_questions[current_month], monthly_questions[prev_month])
+        answer_trend = calculate_trend(monthly_answers[current_month], monthly_answers[prev_month])
+        vote_trend = calculate_trend(monthly_votes[current_month], monthly_votes[prev_month])
+        
+        # For views trend, we need to implement monthly views tracking
+        view_trend = 0  # Placeholder - implement similar to others
+        
+        # Total counts
+        total_questions = mongo.db.questions.count_documents({"memberId": user_id})
+        total_answers = mongo.db.answers.count_documents({"memberId": user_id})
+        total_votes = mongo.db.votes.count_documents({"memberId": user_id})
+        
+        # Total views (sum of all question views)
+        total_views_result = mongo.db.questions.aggregate([
+            {"$match": {"memberId": user_id}},
+            {"$group": {"_id": None, "total": {"$sum": "$views"}}}
+        ])
+        
+        total_views = next(total_views_result, {}).get('total', 0)
+        
+        return jsonify({
+            "monthlyQuestions": monthly_questions,
+            "monthlyAnswers": monthly_answers,
+            "monthlyVotes": monthly_votes,
+            "weeklyActivity": weekly_activity,
+            "totalQuestions": total_questions,
+            "totalAnswers": total_answers,
+            "totalVotes": total_votes,
+            "totalViews": total_views,
+            "questionTrend": question_trend,
+            "answerTrend": answer_trend,
+            "voteTrend": vote_trend,
+            "viewTrend": view_trend,
+            "success": True
+        }), 200
+        
+    except Exception as e:
+        print(f"Error fetching user stats: {str(e)}")
+        return jsonify({
+            "message": "Error fetching user stats",
+            "error": str(e),
+            "success": False
+        }), 500
+    
+@app.route('/api/communities/<int:community_id>/stats', methods=['GET'])
+@login_required
+def get_community_stats(community_id):
+    try:
+        # Get current date and calculate time ranges
+        now = datetime.utcnow()
+        one_year_ago = now - timedelta(days=365)
+        one_week_ago = now - timedelta(days=7)
+        current_month = now.month - 1  # 0-based index
+        prev_month = current_month - 1 if current_month > 0 else 11
+        
+        # Initialize monthly arrays with zeros
+        monthly_questions = [0] * 12
+        monthly_answers = [0] * 12
+        monthly_users = [0] * 12
+        
+        # Get monthly questions
+        questions = mongo.db.questions.aggregate([
+            {"$match": {
+                "communityId": community_id,
+                "dateCreated": {"$gte": one_year_ago}
+            }},
+            {"$group": {
+                "_id": {"$month": "$dateCreated"},
+                "count": {"$sum": 1}
+            }}
+        ])
+        
+        for q in questions:
+            month_index = q['_id'] - 1
+            if 0 <= month_index < 12:
+                monthly_questions[month_index] = q['count']
+        
+        # Get monthly answers
+        answers = mongo.db.answers.aggregate([
+            {"$match": {
+                "questionId": {"$in": [q["_id"] for q in mongo.db.questions.find({"communityId": community_id}, {"_id": 1})]},
+                "dateCreated": {"$gte": one_year_ago}
+            }},
+            {"$group": {
+                "_id": {"$month": "$dateCreated"},
+                "count": {"$sum": 1}
+            }}
+        ])
+        
+        for a in answers:
+            month_index = a['_id'] - 1
+            if 0 <= month_index < 12:
+                monthly_answers[month_index] = a['count']
+        
+        # Get monthly new users
+        users = mongo.db.member_communities.aggregate([
+            {"$match": {
+                "communityId": community_id,
+                "dateJoined": {"$gte": one_year_ago}
+            }},
+            {"$group": {
+                "_id": {"$month": "$dateJoined"},
+                "count": {"$sum": 1}
+            }}
+        ])
+        
+        for u in users:
+            month_index = u['_id'] - 1
+            if 0 <= month_index < 12:
+                monthly_users[month_index] = u['count']
+        
+        # Weekly activity (last 7 days)
+        weekly_activity = [0] * 7  # Sunday to Saturday
+        
+        # Get daily activity counts (questions + answers)
+        for i in range(7):
+            day_start = now - timedelta(days=(6-i))
+            day_end = day_start + timedelta(days=1)
+            
+            # Count questions
+            weekly_activity[i] += mongo.db.questions.count_documents({
+                "communityId": community_id,
+                "dateCreated": {"$gte": day_start, "$lt": day_end}
+            })
+            
+            # Count answers
+            weekly_activity[i] += mongo.db.answers.count_documents({
+                "questionId": {"$in": [q["_id"] for q in mongo.db.questions.find({"communityId": community_id}, {"_id": 1})]},
+                "dateCreated": {"$gte": day_start, "$lt": day_end}
+            })
+        
+        # Calculate trends
+        def calculate_trend(current, previous):
+            if previous == 0:
+                return 100 if current > 0 else 0
+            return round(((current - previous) / previous) * 100)
+        
+        question_trend = calculate_trend(monthly_questions[current_month], monthly_questions[prev_month])
+        answer_trend = calculate_trend(monthly_answers[current_month], monthly_answers[prev_month])
+        user_trend = calculate_trend(monthly_users[current_month], monthly_users[prev_month])
+        
+        # Total counts
+        total_questions = mongo.db.questions.count_documents({"communityId": community_id})
+        total_answers = mongo.db.answers.count_documents({
+            "questionId": {"$in": [q["_id"] for q in mongo.db.questions.find({"communityId": community_id}, {"_id": 1})]}
+        })
+        
+        # Active and banned users
+        active_users = mongo.db.member_communities.count_documents({"communityId": community_id})
+        banned_users = mongo.db.users.count_documents({
+            f"community_bans.{community_id}.status": "banned"
+        })
+        
+        return jsonify({
+            "monthlyQuestions": monthly_questions,
+            "monthlyAnswers": monthly_answers,
+            "monthlyUsers": monthly_users,
+            "weeklyActivity": weekly_activity,
+            "totalQuestions": total_questions,
+            "totalAnswers": total_answers,
+            "activeUsers": active_users,
+            "bannedUsers": banned_users,
+            "questionTrend": question_trend,
+            "answerTrend": answer_trend,
+            "userTrend": user_trend,
+            "success": True
+        }), 200
+        
+    except Exception as e:
+        print(f"Error fetching community stats: {str(e)}")
+        return jsonify({
+            "message": "Error fetching community stats",
+            "error": str(e),
+            "success": False
+        }), 500
+
+@app.route('/api/communities/<int:community_id>', methods=['GET'])
+@login_required
+def get_community(community_id):
+    try:
+        community = mongo.db.communities.find_one({"_id": community_id})
+        if not community:
+            return jsonify({'message': 'Community not found'}), 404
+        return jsonify({
+            "name": community["name"],
+            "description": community["description"]
+        }), 200
+    except Exception as e:
+        return jsonify({'message': 'Error fetching community', 'error': str(e)}), 500
+    
+@app.route('/api/communities/<int:community_id>/members', methods=['GET'])
+@login_required
+def get_community_members(community_id):
+    try:
+        # Get pagination parameters
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 10))
+        
+        # Get active members
+        active_members = list(mongo.db.member_communities.aggregate([
+            {"$match": {"communityId": community_id}},
+            {"$lookup": {
+                "from": "users",
+                "localField": "memberId",
+                "foreignField": "_id",
+                "as": "user"
+            }},
+            {"$unwind": "$user"},
+            {"$project": {
+                "_id": "$user._id",
+                "username": "$user.username",
+                "avatar": "$user.avatar",
+                "reputation": "$user.reputation",
+                "dateJoined": "$dateJoined",
+                "status": "$user.status"
+            }},
+            {"$skip": (page - 1) * per_page},
+            {"$limit": per_page}
+        ]))
+        
+        # Get banned members
+        banned_members = list(mongo.db.users.aggregate([
+            {"$match": {f"community_bans.{community_id}.status": "banned"}},
+            {"$project": {
+                "_id": 1,
+                "username": 1,
+                "avatar": 1,
+                "reputation": 1,
+                "status": 1,
+                "dateJoined": {"$literal": None}  # Banned members might not have this
+            }},
+            {"$skip": (page - 1) * per_page},
+            {"$limit": per_page}
+        ]))
+        
+        # Get total counts for pagination
+        total_active = mongo.db.member_communities.count_documents({"communityId": community_id})
+        total_banned = mongo.db.users.count_documents({f"community_bans.{community_id}.status": "banned"})
+        
+        return jsonify({
+            "activeMembers": active_members,
+            "bannedMembers": banned_members,
+            "totalActive": total_active,
+            "totalBanned": total_banned,
+            "success": True
+        }), 200
+        
+    except Exception as e:
+        print(f"Error fetching community members: {str(e)}")
+        return jsonify({
+            "message": "Error fetching community members",
+            "error": str(e),
+            "success": False
+        }), 500

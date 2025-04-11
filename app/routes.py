@@ -1425,3 +1425,56 @@ def get_community_members(community_id):
             "error": str(e),
             "success": False
         }), 500
+    
+@app.route('/recover', methods=['POST'])
+def initiate_password_recovery():
+    """Step 1: Verify username and email"""
+    data = request.get_json()
+    username = data.get('username')
+    email = data.get('email')
+
+    if not username or not email:
+        return jsonify({'message': 'Username and email are required'}), 400
+
+    user = mongo.db.users.find_one({'username': username, 'email': email})
+    if not user:
+        return jsonify({'message': 'No account found with these credentials'}), 404
+
+    # In a real app, you would generate a token and send an email here
+    # For this simplified version, we'll just return success
+    return jsonify({
+        'message': 'Credentials verified. You can now reset your password.',
+        'userId': str(user['_id'])
+    }), 200
+
+@app.route('/recover/reset', methods=['POST'])
+def reset_password():
+    """Step 2: Reset password after verification"""
+    data = request.get_json()
+    user_id = data.get('userId')
+    new_password = data.get('newPassword')
+    confirm_password = data.get('confirmPassword')
+
+    if not user_id or not new_password or not confirm_password:
+        return jsonify({'message': 'All fields are required'}), 400
+
+    if new_password != confirm_password:
+        return jsonify({'message': 'Passwords do not match'}), 400
+
+    if len(new_password) < 8:
+        return jsonify({'message': 'Password must be at least 8 characters long'}), 400
+
+    try:
+        user = mongo.db.users.find_one({'_id': ObjectId(user_id)})
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+
+        hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        mongo.db.users.update_one(
+            {'_id': ObjectId(user_id)},
+            {'$set': {'password': hashed_password}}
+        )
+
+        return jsonify({'message': 'Password updated successfully'}), 200
+    except Exception as e:
+        return jsonify({'message': 'Error resetting password', 'error': str(e)}), 500

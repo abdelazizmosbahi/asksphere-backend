@@ -751,7 +751,21 @@ def delete_question(question_id):
         if str(question['memberId']) != current_user.id:
             return jsonify({'message': 'Unauthorized: You can only delete your own questions'}), 403
 
+        # Delete answers associated with the question
+        answers = mongo.db.answers.find({"questionId": ObjectId(question_id)})
+        answer_ids = [answer["_id"] for answer in answers]
+
+        # Delete notifications related to the question (type="vote" or type="answer")
+        mongo.db.notifications.delete_many({
+            "$or": [
+                {"type": "vote", "relatedId": question_id},
+                {"type": "answer", "relatedId": {"$in": [str(aid) for aid in answer_ids]}}
+            ]
+        })
+
+        # Delete the answers, votes, and the question
         mongo.db.answers.delete_many({"questionId": ObjectId(question_id)})
+        mongo.db.votes.delete_many({"questionId": ObjectId(question_id)})
         mongo.db.questions.delete_one({"_id": ObjectId(question_id)})
 
         return jsonify({'message': 'Question deleted successfully'}), 200
@@ -770,6 +784,15 @@ def delete_answer(answer_id):
         if str(answer['memberId']) != current_user.id:
             return jsonify({'message': 'Unauthorized: You can only delete your own answers'}), 403
 
+        # Delete notifications related to the answer (type="answer" or type="vote")
+        mongo.db.notifications.delete_many({
+            "$or": [
+                {"type": "answer", "relatedId": answer_id},
+                {"type": "vote", "relatedId": answer_id}
+            ]
+        })
+
+        # Delete the answer and update the question's answer count
         mongo.db.answers.delete_one({"_id": ObjectId(answer_id)})
         mongo.db.questions.update_one(
             {"_id": answer['questionId']},
@@ -983,21 +1006,56 @@ def get_notifications():
         notifications = mongo.db.notifications.find({"memberId": ObjectId(current_user.id)}).sort("dateCreated", -1)
         response = []
         for notification in notifications:
-            notification_data = {
-                "_id": str(notification["_id"]),
-                "message": notification["message"],
-                "type": notification["type"],
-                "relatedId": str(notification["relatedId"]) if notification["relatedId"] else None,
-                "read": notification["read"],
-                "dateCreated": notification["dateCreated"].isoformat()
-            }
-            # For answer notifications, include the questionId
-            if notification["type"] == "answer" and notification["relatedId"]:
-                answer = mongo.db.answers.find_one({"_id": ObjectId(notification["relatedId"])})
-                if answer:
-                    notification_data["questionId"] = str(answer["questionId"])
-            elif notification["type"] == "vote" and notification["relatedId"]:
-                notification_data["questionId"] = str(notification["relatedId"])
+            # Skip notifications if the related question or answer is deleted
+            if notification["type"] in ["answer", "vote"]:
+                if notification["relatedId"]:
+                    if notification["type"] == "answer":
+                        # Check if the answer exists
+                        answer = mongo.db.answers.find_one({"_id": ObjectId(notification["relatedId"])})
+                        if not answer:
+                            continue  # Skip if answer is deleted
+                        # Check if the question exists
+                        question = mongo.db.questions.find_one({"_id": answer["questionId"]})
+                        if not question:
+                            continue  # Skip if question is deleted
+                        notification_data = {
+                            "_id": str(notification["_id"]),
+                            "message": notification["message"],
+                            "type": notification["type"],
+                            "relatedId": str(notification["relatedId"]),
+                            "read": notification["read"],
+                            "dateCreated": notification["dateCreated"].isoformat(),
+                            "questionId": str(answer["questionId"])
+                        }
+                    elif notification["type"] == "vote":
+                        # For vote notifications, relatedId can be a questionId or answerId
+                        related_id = notification["relatedId"]
+                        question = mongo.db.questions.find_one({"_id": ObjectId(related_id)})
+                        answer = mongo.db.answers.find_one({"_id": ObjectId(related_id)})
+                        if not question and not answer:
+                            continue  # Skip if neither question nor answer exists
+                        question_id = related_id if question else str(answer["questionId"])
+                        notification_data = {
+                            "_id": str(notification["_id"]),
+                            "message": notification["message"],
+                            "type": notification["type"],
+                            "relatedId": str(notification["relatedId"]),
+                            "read": notification["read"],
+                            "dateCreated": notification["dateCreated"].isoformat(),
+                            "questionId": question_id
+                        }
+                else:
+                    continue  # Skip if relatedId is missing
+            else:
+                # For other types (e.g., badge, ban, warning), no relatedId validation needed
+                notification_data = {
+                    "_id": str(notification["_id"]),
+                    "message": notification["message"],
+                    "type": notification["type"],
+                    "relatedId": str(notification["relatedId"]) if notification["relatedId"] else None,
+                    "read": notification["read"],
+                    "dateCreated": notification["dateCreated"].isoformat()
+                }
             response.append(notification_data)
         return jsonify(response), 200
     except Exception as e:

@@ -314,6 +314,7 @@ def validate_content():
 @app.route('/questions', methods=['POST'])
 @login_required
 def post_question():
+    print("post_question route called")
     try:
         data = request.get_json()
         if not data:
@@ -339,9 +340,102 @@ def post_question():
         if not member_community:
             return jsonify({'message': 'Must be a member of the community to ask a question'}), 403
 
+        print(f"Checking for ban in community ID: {community_id}")
+        ban = mongo.db.community_bans.find_one({
+            "memberId": ObjectId(current_user.id),
+            "communityId": community_id
+        })
+        if ban and ban['expiresAt'] > datetime.utcnow():
+            print(f"User is banned until {ban['expiresAt']}")
+            return jsonify({
+                'message': f"User is banned from this community until {ban['expiresAt'].isoformat()}"
+            }), 403
+
+        print(f"Validating content relevance for community ID: {community_id}")
+        validation_result = community_validator.validate_content(content, community_id)
+        if validation_result is None:
+            print("Community not found")
+            return jsonify({'message': 'Community not found'}), 404
+
+        if not validation_result['is_relevant']:
+            suggested_community = validation_result['suggested_community']
+            print(f"Content not relevant. Suggested community: {suggested_community}")
+            return jsonify({
+                'message': 'Content is not relevant to this community',
+                'suggested_community': suggested_community
+            }), 400
+
+        print("Checking for inappropriate content")
+        filtered_content, warning = ai_filter.filterContent(
+            content=content,
+            memberId=ObjectId(current_user.id),
+            questionId=None,
+            answerId=None,
+            communityId=community_id,
+            db=mongo.db
+        )
+        if warning:
+            print(f"Inappropriate content detected: {warning}")
+            # Update inappropriate_content collection
+            mongo.db.inappropriate_content.insert_one({
+                "content": content,
+                "memberId": ObjectId(current_user.id),
+                "communityId": community_id,
+                "questionId": None,
+                "answerId": None,
+                "timestamp": datetime.utcnow(),
+                "keys": ["toxicity"],
+                "isProcessed": False
+            })
+            # Increment restrictionLevel
+            user = mongo.db.users.find_one({"_id": ObjectId(current_user.id)})
+            restriction_level = (user.get('restrictionLevel', 0) or 0) + 1
+            mongo.db.users.update_one(
+                {"_id": ObjectId(current_user.id)},
+                {"$set": {"restrictionLevel": restriction_level}}
+            )
+            # Create notification
+            attempts_left = 5 - restriction_level
+            feedback = f"You have {attempts_left} attempts left before a ban in community {community_id}."
+            if attempts_left <= 2 and attempts_left > 0:
+                feedback = f"Warning: You will be banned from this community if you reach 5 inappropriate attempts ({attempts_left} attempts left)."
+            elif attempts_left <= 0:
+                ban_duration_days = 1
+                ban_expires = datetime.utcnow() + timedelta(days=ban_duration_days)
+                mongo.db.community_bans.insert_one({
+                    "memberId": ObjectId(current_user.id),
+                    "communityId": community_id,
+                    "startDate": datetime.utcnow(),
+                    "expiresAt": ban_expires,
+                    "reason": "Exceeded inappropriate content attempts"
+                })
+                # Clear inappropriate_content for this user and community
+                mongo.db.inappropriate_content.delete_many({
+                    "memberId": ObjectId(current_user.id),
+                    "communityId": community_id
+                })
+                feedback = f"You have been banned from this community for {ban_duration_days} day(s). Ban expires on {ban_expires.isoformat()}."
+                mongo.db.users.update_one(
+                    {"_id": ObjectId(current_user.id)},
+                    {"$set": {"restrictionLevel": 0}}
+                )
+
+            mongo.db.notifications.insert_one({
+                "memberId": ObjectId(current_user.id),
+                "type": "inappropriate",
+                "message": feedback,
+                "isRead": False,
+                "createdAt": datetime.utcnow(),
+                "communityId": community_id
+            })
+            return jsonify({
+                'message': 'Content flagged as inappropriate',
+                'feedback': feedback
+            }), 400
+
         question = {
             "title": title,
-            "content": content,
+            "content": filtered_content,
             "communityId": community_id,
             "memberId": ObjectId(current_user.id),
             "tags": tags,
@@ -351,7 +445,10 @@ def post_question():
             "answers": 0
         }
         result = mongo.db.questions.insert_one(question)
-        return jsonify({'message': 'Question posted successfully', 'questionId': str(result.inserted_id)}), 201
+        return jsonify({
+            'message': 'Question posted successfully',
+            'questionId': str(result.inserted_id)
+        }), 201
 
     except Exception as e:
         print(f"Error posting question: {str(e)}")
@@ -598,12 +695,12 @@ def vote():
                         answer_owner['password'],
                         answer_owner.get('dateJoined'),
                         answer_owner.get('reputation', 0),
-                        answer_owner.get('status', 'active'),
-                        answer_owner.get('restrictionLevel', 0),
-                        answer_owner.get('badges', []),
-                        answer_owner.get('avatar'),
-                        answer_owner.get('community_interactions', {}),
-                        answer_owner.get('community_bans', {})
+                        question_owner.get('status', 'active'),
+                        question_owner.get('restrictionLevel', 0),
+                        question_owner.get('badges', []),
+                        question_owner.get('avatar'),
+                        question_owner.get('community_interactions', {}),
+                        question_owner.get('community_bans', {})
                     )
                     vote_action = "upvoted" if value == 1 else "downvoted"
                     if not existing_vote:  # New vote
@@ -833,6 +930,17 @@ def update_answer(answer_id):
             return jsonify({'message': 'Question not found'}), 404
 
         community_id = question['communityId']
+        print(f"Checking for ban in community ID: {community_id}")
+        ban = mongo.db.community_bans.find_one({
+            "memberId": ObjectId(current_user.id),
+            "communityId": community_id
+        })
+        if ban and ban['expiresAt'] > datetime.utcnow():
+            print(f"User is banned until {ban['expiresAt']}")
+            return jsonify({
+                'message': f"User is banned from this community until {ban['expiresAt'].isoformat()}"
+            }), 403
+
         print(f"Validating content relevance for community ID: {community_id}")
         validation_result = community_validator.validate_content(content, community_id)
         if validation_result is None:
@@ -848,7 +956,7 @@ def update_answer(answer_id):
             }), 400
 
         print("Checking for inappropriate content")
-        filtered_content, warning = ai_content_filter.filterContent(
+        filtered_content, warning = ai_filter.filterContent(
             content=content,
             memberId=ObjectId(current_user.id),
             questionId=str(answer['questionId']),
@@ -857,23 +965,80 @@ def update_answer(answer_id):
             db=mongo.db
         )
         if warning:
-            print(f"Inappropriate content warning: {warning}")
-            return jsonify({'message': warning}), 400
+            print(f"Inappropriate content detected: {warning}")
+            # Update inappropriate_content collection
+            mongo.db.inappropriate_content.insert_one({
+                "content": content,
+                "memberId": ObjectId(current_user.id),
+                "communityId": community_id,
+                "questionId": str(answer['questionId']),
+                "answerId": answer_id,
+                "timestamp": datetime.utcnow(),
+                "keys": ["toxicity"],  # Adjust based on AIContentFilter logic
+                "isProcessed": False
+            })
+            # Increment restrictionLevel
+            user = mongo.db.users.find_one({"_id": ObjectId(current_user.id)})
+            restriction_level = (user.get('restrictionLevel', 0) or 0) + 1
+            mongo.db.users.update_one(
+                {"_id": ObjectId(current_user.id)},
+                {"$set": {"restrictionLevel": restriction_level}}
+            )
+            # Create notification
+            attempts_left = 5 - restriction_level
+            feedback = f"You have {attempts_left} attempts left before a ban in community {community_id}."
+            if attempts_left <= 2 and attempts_left > 0:
+                feedback = f"Warning: You will be banned from this community if you reach 5 inappropriate attempts ({attempts_left} attempts left)."
+            elif attempts_left <= 0:
+                ban_duration_days = 1
+                ban_expires = datetime.utcnow() + timedelta(days=ban_duration_days)
+                mongo.db.community_bans.insert_one({
+                    "memberId": ObjectId(current_user.id),
+                    "communityId": community_id,
+                    "startDate": datetime.utcnow(),
+                    "expiresAt": ban_expires,
+                    "reason": "Exceeded inappropriate content attempts"
+                })
+                # Clear inappropriate_content for this user and community
+                mongo.db.inappropriate_content.delete_many({
+                    "memberId": ObjectId(current_user.id),
+                    "communityId": community_id
+                })
+                feedback = f"You have been banned from this community for {ban_duration_days} day(s). Ban expires on {ban_expires.isoformat()}."
+                mongo.db.users.update_one(
+                    {"_id": ObjectId(current_user.id)},
+                    {"$set": {"restrictionLevel": 0}}
+                )
+
+            mongo.db.notifications.insert_one({
+                "memberId": ObjectId(current_user.id),
+                "type": "inappropriate",
+                "message": feedback,
+                "isRead": False,
+                "createdAt": datetime.utcnow(),
+                "communityId": community_id
+            })
+            return jsonify({
+                'message': 'Content flagged as inappropriate',
+                'feedback': feedback
+            }), 400
 
         print("Updating answer in database")
+        updated_answer = {
+            "content": filtered_content,
+            "dateUpdated": datetime.utcnow()
+        }
         result = mongo.db.answers.update_one(
             {"_id": ObjectId(answer_id)},
-            {"$set": {
-                "content": filtered_content,
-                "dateUpdated": datetime.utcnow()
-            }}
+            {"$set": updated_answer}
         )
         print(f"Update result: {result.modified_count} document(s) modified")
 
-        updated_answer = mongo.db.answers.find_one({"_id": ObjectId(answer_id)})
+        updated_answer_doc = mongo.db.answers.find_one({"_id": ObjectId(answer_id)})
         return jsonify({
-            'message': 'Answer updated successfully',
-            'dateUpdated': updated_answer['dateUpdated'].isoformat()
+            'id': answer_id,
+            'content': updated_answer_doc['content'],
+            'dateUpdated': updated_answer_doc['dateUpdated'].isoformat()
         }), 200
     except Exception as e:
         print(f"Error in update_answer: {str(e)}")

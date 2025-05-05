@@ -12,14 +12,15 @@ class User:
         self.avatar = avatar if avatar else "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
 
 class Notification:
-    def __init__(self, id, memberId, message, type, relatedId=None, read=False, dateCreated=None):
+    def __init__(self, id, memberId, message, type, relatedId=None, read=False, createdAt=None, communityId=None):
         self.id = id
         self.memberId = memberId
         self.message = message
         self.type = type  # e.g., "answer", "inappropriate", "badge", "ban", "warning", "vote"
         self.relatedId = relatedId  # e.g., questionId, answerId, badge name
         self.read = read
-        self.dateCreated = dateCreated if dateCreated else datetime.utcnow()
+        self.createdAt = createdAt if createdAt else datetime.utcnow()
+        self.communityId = communityId
 
 class Member(UserMixin):
     def __init__(self, id, username, email, password, dateJoined, reputation, status, restrictionLevel, badges, avatar=None, community_interactions=None, community_bans=None):
@@ -136,14 +137,15 @@ class Member(UserMixin):
         }
         return badge_mapping.get(community_name, "Member")
 
-    def createNotification(self, message, type, relatedId, db):
+    def createNotification(self, message, type, relatedId, db, communityId=None):
         notification = Notification(
             id=None,
             memberId=ObjectId(self.id),
             message=message,
             type=type,
             relatedId=relatedId,
-            read=False
+            read=False,
+            communityId=communityId
         )
         db.notifications.insert_one({
             "memberId": notification.memberId,
@@ -151,7 +153,8 @@ class Member(UserMixin):
             "type": notification.type,
             "relatedId": relatedId,
             "read": notification.read,
-            "dateCreated": notification.dateCreated
+            "createdAt": notification.createdAt,
+            "communityId": notification.communityId
         })
 
 class Community:
@@ -190,7 +193,7 @@ class Answer:
         self.content = content
         db.answers.update_one(
             {"_id": ObjectId(self.id)},
-            {"$set": {"content": content}}
+            {"$set": {"content": content, "dateUpdated": datetime.utcnow()}}
         )
 
 class Vote:
@@ -233,121 +236,63 @@ class AIContentFilter:
             print(f"Detoxify results: {results}")
             toxicity_score = results['toxicity']
             
-            if toxicity_score > 0.9:
+            if toxicity_score > 0.5:  # Aligned with routes.py threshold
                 keys = [key for key, value in results.items() if value > 0.5 and key != 'toxicity']
                 print(f"Inappropriate content detected. Keys: {keys}")
-                # Log the inappropriate attempt
+                # Log to inappropriate_content
                 db.inappropriate_content.insert_one({
+                    "content": content,
                     "memberId": memberId,
+                    "communityId": communityId,
                     "questionId": questionId,
                     "answerId": answerId,
-                    "communityId": communityId,
-                    "content": content,
-                    "keys": keys,
-                    "date": datetime.utcnow()
+                    "timestamp": datetime.utcnow(),
+                    "keys": keys or ["toxicity"],
+                    "isProcessed": False
                 })
-
-                # Increment the user's restrictionLevel
+                # Increment restrictionLevel
                 user = db.users.find_one({"_id": memberId})
-                current_restriction_level = user.get("restrictionLevel", 0) + 1
+                restriction_level = (user.get('restrictionLevel', 0) or 0) + 1
                 db.users.update_one(
                     {"_id": memberId},
-                    {"$set": {"restrictionLevel": current_restriction_level}}
+                    {"$set": {"restrictionLevel": restriction_level}}
                 )
-
-                # Check the number of inappropriate attempts in this community
-                inappropriate_count = db.inappropriate_content.count_documents({
+                # Create notification
+                attempts_left = 5 - restriction_level
+                feedback = f"You have {attempts_left} attempts left before a ban in community {communityId}."
+                if attempts_left <= 2 and attempts_left > 0:
+                    feedback = f"Warning: You will be banned from this community if you reach 5 inappropriate attempts ({attempts_left} attempts left)."
+                elif attempts_left <= 0:
+                    ban_duration_days = 1
+                    ban_expires = datetime.utcnow() + timedelta(days=ban_duration_days)
+                    db.community_bans.insert_one({
+                        "memberId": memberId,
+                        "communityId": communityId,
+                        "startDate": datetime.utcnow(),
+                        "expiresAt": ban_expires,
+                        "reason": "Exceeded inappropriate content attempts"
+                    })
+                    # Clear inappropriate_content for this user and community
+                    db.inappropriate_content.delete_many({
+                        "memberId": memberId,
+                        "communityId": communityId
+                    })
+                    feedback = f"You have been banned from this community for {ban_duration_days} day(s). Ban expires on {ban_expires.isoformat()}."
+                    db.users.update_one(
+                        {"_id": memberId},
+                        {"$set": {"restrictionLevel": 0}}
+                    )
+                
+                # Notify the user
+                db.notifications.insert_one({
                     "memberId": memberId,
+                    "type": "inappropriate",
+                    "message": feedback,
+                    "isRead": False,
+                    "createdAt": datetime.utcnow(),
                     "communityId": communityId
                 })
-
-                # Fetch the member object to create a notification
-                member = db.users.find_one({"_id": memberId})
-                if member:
-                    member_obj = Member(
-                        str(member['_id']),
-                        member['username'],
-                        member['email'],
-                        member['password'],
-                        member.get('dateJoined'),
-                        member.get('reputation', 0),
-                        member.get('status', 'active'),
-                        member.get('restrictionLevel', 0),
-                        member.get('badges', []),
-                        member.get('avatar'),
-                        member.get('community_interactions', {}),
-                        member.get('community_bans', {})
-                    )
-
-                    # Ban from the community after 5 inappropriate attempts
-                    if inappropriate_count >= 5:
-                        ban_info = user.get("community_bans", {}).get(str(communityId), {})
-                        ban_count = ban_info.get("ban_count", 0) if isinstance(ban_info, dict) else 0
-                        ban_count += 1
-                        ban_duration_days = ban_count
-                        ban_expiration = datetime.utcnow() + timedelta(days=ban_duration_days)
-
-                        db.users.update_one(
-                            {"_id": memberId},
-                            {"$set": {
-                                f"community_bans.{communityId}": {
-                                    "status": "banned",
-                                    "ban_count": ban_count,
-                                    "duration_days": ban_duration_days,
-                                    "expiration": ban_expiration
-                                }
-                            }}
-                        )
-
-                        db.inappropriate_content.delete_many({
-                            "memberId": memberId,
-                            "communityId": communityId
-                        })
-
-                        db.moderation_logs.insert_one({
-                            "memberId": memberId,
-                            "communityId": communityId,
-                            "reason": f"Banned from community for {ban_duration_days} day(s) due to 5 inappropriate attempts (Ban #{ban_count})",
-                            "date": datetime.utcnow()
-                        })
-
-                        # Notify the user of the ban
-                        member_obj.createNotification(
-                            message=f"You have been banned from community {communityId} for {ban_duration_days} day(s) due to inappropriate content. Ban expires on {ban_expiration}.",
-                            type="ban",
-                            relatedId=str(communityId),
-                            db=db
-                        )
-
-                        return "inappropriate content detected", f"You have been banned from this community for {ban_duration_days} day(s). Ban expires on {ban_expiration}."
-
-                    attempts_left = 5 - inappropriate_count
-                    if inappropriate_count == 3:
-                        db.moderation_logs.insert_one({
-                            "memberId": memberId,
-                            "communityId": communityId,
-                            "reason": "Warning: 3 inappropriate attempts detected in community",
-                            "date": datetime.utcnow()
-                        })
-                        # Notify the user of the warning
-                        member_obj.createNotification(
-                            message="Warning: You have made 3 inappropriate attempts in this community. 2 more attempts will result in a ban.",
-                            type="warning",
-                            relatedId=str(communityId),
-                            db=db
-                        )
-                        return "inappropriate content detected", "Warning: You will be banned from this community if you reach 5 inappropriate attempts (2 attempts left)."
-                    elif attempts_left > 0:
-                        # Notify the user of the inappropriate content
-                        member_obj.createNotification(
-                            message=f"Your content was flagged as inappropriate. You have {attempts_left} attempts left before a ban in community {communityId}.",
-                            type="inappropriate",
-                            relatedId=questionId if questionId else answerId,
-                            db=db
-                        )
-                        return "inappropriate content detected", f"You have {attempts_left} attempts left."
-                    else:
-                        return "inappropriate content detected", "You have been banned from this community."
+                return content, feedback
 
             return content, None
 
@@ -359,7 +304,7 @@ class AIContentFilter:
         db.moderation_logs.insert_one({
             "memberId": memberId,
             "reason": reason,
-            "date": datetime.utcnow()
+            "timestamp": datetime.utcnow()
         })
 
     def restrictMember(self, memberId, days, db):
@@ -376,7 +321,7 @@ class AIContentFilter:
 
 class CommunityValidator:
     def __init__(self, db):
-        self.model = SentenceTransformer('all-mpnet-base-v2')  # Updated to the best model
+        self.model = SentenceTransformer('all-mpnet-base-v2')
         self.db = db
         self.description_embeddings = {}
         self.community_info = {}
@@ -398,10 +343,9 @@ class CommunityValidator:
 
         description_embedding = self.description_embeddings[community_id_str]
         similarity_score = util.cos_sim(content_embedding, description_embedding)[0][0].item()
-        threshold = 0.15  # Updated threshold based on testing
+        threshold = 0.15
         is_relevant = similarity_score >= threshold
 
-        # Debug logging
         print(f"Content: {content}")
         print(f"Target Community ID: {community_id_str}, Name: {self.community_info[community_id_str]['name']}, Description: {self.community_info[community_id_str]['description']}")
         print(f"Similarity Score: {similarity_score}, Threshold: {threshold}, Is Relevant: {is_relevant}")

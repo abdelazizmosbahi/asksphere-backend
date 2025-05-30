@@ -94,6 +94,9 @@ def register():
     if mongo.db.users.find_one({'username': data['username']}):
         return jsonify({'message': 'Username already exists'}), 400
 
+    if mongo.db.users.find_one({'email': data['email']}):
+        return jsonify({'message': 'Email already exists'}), 400
+
     hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
     user = {
         "username": data['username'],
@@ -1588,11 +1591,9 @@ def get_community(community_id):
 @login_required
 def get_community_members(community_id):
     try:
-        # Get pagination parameters
         page = int(request.args.get('page', 1))
         per_page = int(request.args.get('per_page', 10))
         
-        # Get active members
         active_members = list(mongo.db.member_communities.aggregate([
             {"$match": {"communityId": community_id}},
             {"$lookup": {
@@ -1607,14 +1608,20 @@ def get_community_members(community_id):
                 "username": "$user.username",
                 "avatar": "$user.avatar",
                 "reputation": "$user.reputation",
-                "dateJoined": "$dateJoined",
+                "dateJoined": {
+                    "$cond": [
+                        {"$eq": ["$dateJoined", None]},
+                        {"$dateToString": {"format": "%Y-%m-%dT%H:%M:%S.%LZ", "date": "$$NOW"}},
+                        {"$dateToString": {"format": "%Y-%m-%dT%H:%M:%S.%LZ", "date": "$dateJoined"}}
+                    ]
+                },
                 "status": "$user.status"
             }},
+            {"$match": {"status": "active"}},
             {"$skip": (page - 1) * per_page},
             {"$limit": per_page}
         ]))
         
-        # Get banned members
         banned_members = list(mongo.db.users.aggregate([
             {"$match": {f"community_bans.{community_id}.status": "banned"}},
             {"$project": {
@@ -1623,13 +1630,12 @@ def get_community_members(community_id):
                 "avatar": 1,
                 "reputation": 1,
                 "status": 1,
-                "dateJoined": {"$literal": None}  # Banned members might not have this
+                "dateJoined": {"$literal": None}
             }},
             {"$skip": (page - 1) * per_page},
             {"$limit": per_page}
         ]))
         
-        # Get total counts for pagination
         total_active = mongo.db.member_communities.count_documents({"communityId": community_id})
         total_banned = mongo.db.users.count_documents({f"community_bans.{community_id}.status": "banned"})
         
@@ -1701,3 +1707,25 @@ def reset_password():
         return jsonify({'message': 'Password updated successfully'}), 200
     except Exception as e:
         return jsonify({'message': 'Error resetting password', 'error': str(e)}), 500
+    
+@app.route('/api/validate-field', methods=['POST'])
+def validate_field():
+    print("validate_field route called")
+    data = request.get_json()
+    field = data.get('field')
+    value = data.get('value')
+
+    if not field or not value:
+        return jsonify({'message': 'Field and value are required'}), 400
+
+    if field not in ['username', 'email']:
+        return jsonify({'message': 'Invalid field. Must be username or email'}), 400
+
+    existing = mongo.db.users.find_one({field: value})
+    if existing:
+        return jsonify({
+            'valid': False,
+            'message': f'{field.capitalize()} already exists'
+        }), 200
+
+    return jsonify({'valid': True}), 200

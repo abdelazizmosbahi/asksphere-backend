@@ -343,7 +343,7 @@ class CommunityValidator:
 
         description_embedding = self.description_embeddings[community_id_str]
         similarity_score = util.cos_sim(content_embedding, description_embedding)[0][0].item()
-        threshold = 0.15
+        threshold = 0.10
         is_relevant = similarity_score >= threshold
 
         print(f"Content: {content}")

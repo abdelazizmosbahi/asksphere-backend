@@ -1192,7 +1192,7 @@ def get_notifications():
                             "type": notification["type"],
                             "relatedId": str(notification["relatedId"]),
                             "read": notification["read"],
-                            "dateCreated": notification["dateCreated"].isoformat(),
+                            "dateCreated": notification.get("createdAt", notification.get("dateCreated")).isoformat(),
                             "questionId": str(answer["questionId"])
                         }
                     elif notification["type"] == "vote":
@@ -1209,7 +1209,7 @@ def get_notifications():
                             "type": notification["type"],
                             "relatedId": str(notification["relatedId"]),
                             "read": notification["read"],
-                            "dateCreated": notification["dateCreated"].isoformat(),
+                            "dateCreated": notification.get("createdAt", notification.get("dateCreated")).isoformat(),
                             "questionId": question_id
                         }
                 else:
@@ -1222,7 +1222,7 @@ def get_notifications():
                     "type": notification["type"],
                     "relatedId": str(notification["relatedId"]) if notification["relatedId"] else None,
                     "read": notification["read"],
-                    "dateCreated": notification["dateCreated"].isoformat()
+                    "dateCreated": notification.get("createdAt", notification.get("dateCreated")).isoformat()
                 }
             response.append(notification_data)
         return jsonify(response), 200

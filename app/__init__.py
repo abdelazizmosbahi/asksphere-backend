@@ -7,7 +7,7 @@ from flask_cors import CORS  # Import CORS
 from app.utils.ai_content_filter import AIContentFilter  # Import the AIContentFilter class
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '9035aa297aca23fca3b5f070fe909e01567739b99fa41a55bb6ad63076a0adf9'
-app.config['MONGO_URI'] = 'mongodb://localhost:27017/asksphere'
+app.config['MONGO_URI'] = 'mongodb+srv://mosbehiasiz:BSvss3YfLyb0ojMa@cluster0.ntfhykc.mongodb.net/asksphere?retryWrites=true&w=majority'
 CORS(app, resources={r"/*": {"origins": "http://localhost:4200"}}, supports_credentials=True)
 
 mongo = PyMongo(app)

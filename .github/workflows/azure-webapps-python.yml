@@ -60,3 +60,4 @@ jobs:
           app-name: 'asksphere-backend'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_D5EED294C983497380DC8D4CC8434A01 }}
+          package: .

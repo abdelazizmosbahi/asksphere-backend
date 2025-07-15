@@ -30,8 +30,7 @@ jobs:
         run: |
           source venv/bin/activate
           python -m pip install --upgrade pip
-          pip install --cache-dir=/tmp/pip-cache -r requirements.txt
-      # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
+          pip install --cache-dir=/tmp/pip-cache -r requirements.txt --index-url https://download.pytorch.org/whl/cpu
 
       - name: Zip artifact for deployment
         run: zip -r release.zip . -x "venv/*" ".git/*" ".github/*" "*.pyc" "__pycache__/*" "tests/*"

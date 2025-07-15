@@ -31,8 +31,8 @@ azure-keyvault-secrets==4.7.0
 opencensus-ext-azure==1.1.7
 python-dotenv==1.0.1
 gunicorn==20.1.0
-torch==2.7.1+cpu
-torchvision==0.19.1+cpu
+torch==2.7.1
+torchvision==0.19.1
 scikit-learn==1.7.0
 scipy==1.16.0
 numpy==2.3.1

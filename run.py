@@ -1,3 +1,4 @@
+import os
 from app import app, mongo
 
 # Populate the database with initial communities
@@ -42,4 +43,5 @@ with app.app_context():
     print("Inserted 6 communities into the database.")
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.getenv('PORT', 8000))
+    app.run(host='0.0.0.0', port=port, debug=os.getenv('FLASK_ENV') == 'development')

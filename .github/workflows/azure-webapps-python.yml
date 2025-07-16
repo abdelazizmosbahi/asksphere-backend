@@ -44,8 +44,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    permissions:
-      id-token: write
 
     steps:
       - name: Download artifact from build job
@@ -56,39 +54,11 @@ jobs:
       - name: Unzip artifact for deployment
         run: unzip release.zip
 
-      - name: 'Login to Azure'
-        uses: azure/login@v2
+      - name: 'Deploy to Azure Web App'
+        uses: azure/webapps-deploy@v3
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: 'Stop App Service'
-        run: |
-          az webapp stop \
-            --resource-group asksphere-resource-group \
-            --name asksphere-backend
-
-      - name: 'Get Publishing Credentials'
-        id: get-creds
-        run: |
-          creds=$(az webapp deployment user show --query "{username:publishingUserName,password:publishingPassword}" -o json)
-          echo "PUBLISH_USER=$(echo $creds | jq -r .username)" >> $GITHUB_ENV
-          echo "PUBLISH_PASS=$(echo $creds | jq -r .password)" >> $GITHUB_ENV
-
-      - name: 'Clear /site/wwwroot using Kudu API'
-        run: |
-          curl -X DELETE -u "${{ env.PUBLISH_USER }}:${{ env.PUBLISH_PASS }}" \
-            https://asksphere-backend-f3bccbc7d6euc6gf.scm.australiacentral-01.azurewebsites.net/api/vfs/site/wwwroot/ \
-            --header "If-Match: *"
-
-      - name: 'Deploy to Azure Web App using Azure CLI'
-        run: |
-          az webapp deployment source config-zip \
-            --resource-group asksphere-resource-group \
-            --name asksphere-backend \
-            --src release.zip
-
-      - name: 'Start App Service'
-        run: |
-          az webapp start \
-            --resource-group asksphere-resource-group \
-            --name asksphere-backend
+          app-name: 'asksphere-backend'
+          slot-name: 'Production'
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_D5EED294C983497380DC8D4CC8434A01 }}
+          package: release.zip
+          deployment-method: 'zip'

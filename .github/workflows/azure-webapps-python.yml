@@ -58,5 +58,6 @@ jobs:
         uses: azure/webapps-deploy@v2
         with:
           app-name: 'asksphere-backend'
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_D5EED294C983497380DC8D4CC8434A01 }}
+          slot-name: 'Production'
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_ASKSPHERE }}
           package: .

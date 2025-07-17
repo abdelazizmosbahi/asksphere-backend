@@ -6,12 +6,11 @@ from flask_bcrypt import Bcrypt
 from flask_login import LoginManager
 from flask_cors import CORS
 from app.utils.ai_content_filter import AIContentFilter
-
+from app import routes
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', '9035aa297aca23fca3b5f070fe909e01567739b99fa41a55bb6ad63076a0adf9')
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['MONGO_URI'] = os.getenv('MONGO_URI')
-CORS(app, resources={r"/*": {"origins": "http://localhost:4200"}}, supports_credentials=True)
-
+CORS(app, resources={r"/*": {"origins": "https://wonderful-sky-054cb711e.2.azurestaticapps.net"}}, supports_credentials=True)
 mongo = PyMongo(app)
 bcrypt = Bcrypt(app)
 login_manager = LoginManager(app)

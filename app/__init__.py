@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from datetime import datetime
 import os
 from flask import Flask
@@ -6,19 +9,23 @@ from flask_bcrypt import Bcrypt
 from flask_login import LoginManager
 from flask_cors import CORS
 from app.utils.ai_content_filter import AIContentFilter
-from app import routes
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['MONGO_URI'] = os.getenv('MONGO_URI')
+
 CORS(app, resources={r"/*": {"origins": "https://wonderful-sky-054cb711e.2.azurestaticapps.net"}}, supports_credentials=True)
+
 mongo = PyMongo(app)
 bcrypt = Bcrypt(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+
 ai_content_filter = AIContentFilter(modelVersion='original')
+
+# 🔄 Move this import AFTER all app setup
 from app import routes
 
-# Initialize the database with some sample data
 def init_db():
     if mongo.db.users.count_documents({}) == 0:
         hashed_password = bcrypt.generate_password_hash('password123').decode('utf-8')

@@ -1,4 +1,6 @@
 #!/bin/bash
+touch /home/LogFiles/Application/start_sh_debug.txt
+echo "start.sh executed at $(date) from $(pwd)" > /home/LogFiles/Application/start_sh_debug.txt
 APP_PATH="$(dirname "$(realpath "$0")")"
 echo "Starting deployment at $(date) from $APP_PATH" | tee -a /home/LogFiles/Application/asksphere.log
 set -e

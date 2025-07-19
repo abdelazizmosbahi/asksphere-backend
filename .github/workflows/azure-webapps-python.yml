@@ -44,19 +44,23 @@ jobs:
           pip list
       - name: Zip artifact for deployment
         run: |
+<<<<<<< HEAD
           echo "Creating release.zip, excluding unnecessary files"
           zip release.zip . -r -x "venv/*" "__pycache__/*" "*.pyc" "*.pyo" "*.pyd" "*.log" "*.tar.gz" "*.zip" ".env" ".git/*" ".github/*" "*.model" "*.cache"
           ls -la release.zip
       - name: Log package size
         run: |
           echo "Size of release.zip: $(du -sh release.zip | cut -f1)"
+=======
+          zip -r release.zip . \
+            -x "venv/*" "__pycache__/*" "*.pyc" "*.pyo" "*.pyd" "*.log" "*.tar.gz" "*.zip" ".env" ".git/*" ".github/*" "*.model" "*.cache"
+
+>>>>>>> cbd686a65abc1819790bc412304e051611873fbf
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: |
-            release.zip
-            !venv/
+          path: release.zip
 
   deploy:
     runs-on: ubuntu-latest
@@ -70,6 +74,7 @@ jobs:
         with:
           name: python-app
       - name: Unzip artifact for deployment
+<<<<<<< HEAD
         run: |
           echo "Unzipping release.zip"
           unzip release.zip
@@ -86,3 +91,14 @@ jobs:
         run: |
           echo "Deployed to Azure Web App: asksphere-backend"
           echo "Deployment completed at: $(date)"
+=======
+        run: unzip release.zip
+
+      - name: 'Deploy to Azure Web App'
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: 'asksphere-backend'
+          slot-name: 'Production'
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_ASKSPHERE }}
+          package: .
+>>>>>>> cbd686a65abc1819790bc412304e051611873fbf

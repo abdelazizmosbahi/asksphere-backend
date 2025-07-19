@@ -7,3 +7,4 @@ flaskenv/
 *.pyo 
 *.pyd 
 .env 
+HybridConnectionManager-Windows.msi

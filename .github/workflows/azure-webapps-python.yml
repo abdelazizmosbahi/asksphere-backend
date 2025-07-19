@@ -21,7 +21,7 @@ jobs:
       - name: Zip artifact for deployment
         run: |
           mkdir -p release
-          cp -r * release/
+          cp -r app requirements.txt start.sh release/
           cd release
           zip -r ../release.zip .
       - name: Upload artifact for deployment

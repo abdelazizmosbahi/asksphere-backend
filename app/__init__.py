@@ -8,8 +8,7 @@ from app.utils.ai_content_filter import AIContentFilter  # Import the AIContentF
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '9035aa297aca23fca3b5f070fe909e01567739b99fa41a55bb6ad63076a0adf9'
 app.config['MONGO_URI'] = 'mongodb+srv://mosbehiasiz:BSvss3YfLyb0ojMa@cluster0.ntfhykc.mongodb.net/asksphere?retryWrites=true&w=majority'
-CORS(app, resources={r"/*": {"origins": "http://localhost:4200"}}, supports_credentials=True)
-
+cors = CORS(app, resources={r"/*": {"origins": ["https://wonderful-sky-054cb711e.2.azurestaticapps.net", "http://localhost:4200"]}})
 mongo = PyMongo(app)
 bcrypt = Bcrypt(app)
 login_manager = LoginManager(app)

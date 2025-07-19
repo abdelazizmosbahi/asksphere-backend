@@ -40,7 +40,7 @@ with app.app_context():
             }
         ]
     mongo.db.communities.insert_many(communities)
-    print("Inserted 6 communities into the database.")
+    print("Inserted 6 communities into the mongo database.")
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8000))

@@ -1,3 +1,4 @@
+import os
 from flask import Flask
 from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt
@@ -6,8 +7,8 @@ from datetime import datetime
 from flask_cors import CORS  # Import CORS
 from app.utils.ai_content_filter import AIContentFilter  # Import the AIContentFilter class
 app = Flask(__name__)
-app.config['SECRET_KEY'] = '9035aa297aca23fca3b5f070fe909e01567739b99fa41a55bb6ad63076a0adf9'
-app.config['MONGO_URI'] = 'mongodb+srv://mosbehiasiz:BSvss3YfLyb0ojMa@cluster0.ntfhykc.mongodb.net/asksphere?retryWrites=true&w=majority'
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
+app.config['MONGO_URI'] = os.getenv('MONGO_URI')
 cors = CORS(app, resources={r"/*": {"origins": ["https://wonderful-sky-054cb711e.2.azurestaticapps.net", "http://localhost:4200"]}})
 mongo = PyMongo(app)
 bcrypt = Bcrypt(app)

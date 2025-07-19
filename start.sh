@@ -25,7 +25,7 @@ echo "Verifying gunicorn installation at $(date)" | tee -a /home/LogFiles/Applic
 echo "Testing Python imports at $(date)" | tee -a /home/LogFiles/Application/asksphere.log
 /usr/bin/python3 -c "import logging; logging.basicConfig(filename='/home/LogFiles/Application/asksphere.log', level=logging.DEBUG); logging.info('Testing imports'); from app import app; logging.info('App imported successfully')" 2>&1 | tee -a /home/LogFiles/Application/asksphere.log
 
-# Preload AI models (lazy-loaded in app)
+# Preload AI models (if needed)
 echo "Preloading AI models (if needed) at $(date)" | tee -a /home/LogFiles/Application/asksphere.log
 /usr/bin/python3 -c "import logging; logging.basicConfig(filename='/home/LogFiles/Application/asksphere.log', level=logging.DEBUG); from app.utils.ai_content_filter import AIContentFilter; from app.models import CommunityValidator; logging.info('AIContentFilter and CommunityValidator imported')" 2>&1 | tee -a /home/LogFiles/Application/asksphere.log
 

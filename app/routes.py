@@ -9,8 +9,8 @@ from flask_cors import CORS  # Import CORS
 from app import ai_content_filter
 
 # Configure CORS to allow requests from http://localhost:4200 with credentials
-CORS(app, supports_credentials=True, origins=["http://localhost:4200"])
-
+# CORS(app, supports_credentials=True, origins=["http://localhost:4200"])
+CORS(app, supports_credentials=True, origins=["http://localhost:4200", "https://wonderful-sky-054cb711e.2.azurestaticapps.net"])
 # Initialize AIContentFilter and CommunityValidator
 ai_filter = AIContentFilter(modelVersion="1.0")
 community_validator = CommunityValidator(mongo.db)

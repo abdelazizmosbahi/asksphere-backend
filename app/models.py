@@ -3,7 +3,11 @@ from datetime import datetime, timedelta
 from bson import ObjectId
 from detoxify import Detoxify
 from sentence_transformers import SentenceTransformer, util
+import logging
+from sentence_transformers import SentenceTransformer
+from sentence_transformers.util import cos_sim
 
+logger = logging.getLogger(__name__)
 class User:
     def __init__(self, id, username, password, avatar=None):
         self.id = id
@@ -321,71 +325,121 @@ class AIContentFilter:
 
 class CommunityValidator:
     def __init__(self, db):
-        self.model = SentenceTransformer('all-mpnet-base-v2')
+        logger.info("Initializing CommunityValidator")
         self.db = db
+        self.model = None
         self.description_embeddings = {}
         self.community_info = {}
-        communities = self.db.communities.find()
-        for community in communities:
-            community_id = str(community['_id'])
-            description = community['description']
-            self.description_embeddings[community_id] = self.model.encode(description, convert_to_tensor=True)
-            self.community_info[community_id] = {
-                "name": community['name'],
-                "description": description
-            }
+        self._load_community_info()
+
+    def _load_community_info(self):
+        """Load community information from the database without encoding."""
+        try:
+            logger.info("Loading community information from database")
+            communities = self.db.communities.find()
+            for community in communities:
+                community_id = str(community['_id'])
+                self.community_info[community_id] = {
+                    "name": community['name'],
+                    "description": community['description']
+                }
+            logger.info(f"Loaded {len(self.community_info)} communities")
+        except Exception as e:
+            logger.error(f"Failed to load community information: {str(e)}")
+            raise
+
+    def _load_model_and_embeddings(self):
+        """Lazy-load the SentenceTransformer model and encode community descriptions."""
+        if self.model is None:
+            try:
+                logger.info("Loading SentenceTransformer model 'all-mpnet-base-v2'")
+                self.model = SentenceTransformer('all-mpnet-base-v2')
+                logger.info("SentenceTransformer model loaded successfully")
+                
+                logger.info("Encoding community descriptions")
+                for community_id, info in self.community_info.items():
+                    description = info['description']
+                    self.description_embeddings[community_id] = self.model.encode(description, convert_to_tensor=True)
+                logger.info(f"Encoded embeddings for {len(self.description_embeddings)} communities")
+            except Exception as e:
+                logger.error(f"Failed to load model or encode embeddings: {str(e)}")
+                raise
 
     def validate_content(self, content, community_id):
-        content_embedding = self.model.encode(content, convert_to_tensor=True)
-        community_id_str = str(community_id)
-        if community_id_str not in self.description_embeddings:
-            return None
+        """Validate content relevance to a community and find similar questions."""
+        try:
+            logger.info(f"Validating content for community ID: {community_id}")
+            # Lazy-load model and embeddings
+            self._load_model_and_embeddings()
 
-        description_embedding = self.description_embeddings[community_id_str]
-        similarity_score = util.cos_sim(content_embedding, description_embedding)[0][0].item()
-        threshold = 0.10
-        is_relevant = similarity_score >= threshold
+            # Encode content
+            logger.info("Encoding content")
+            content_embedding = self.model.encode(content, convert_to_tensor=True)
+            logger.info("Content encoded successfully")
 
-        print(f"Content: {content}")
-        print(f"Target Community ID: {community_id_str}, Name: {self.community_info[community_id_str]['name']}, Description: {self.community_info[community_id_str]['description']}")
-        print(f"Similarity Score: {similarity_score}, Threshold: {threshold}, Is Relevant: {is_relevant}")
+            community_id_str = str(community_id)
+            if community_id_str not in self.description_embeddings:
+                logger.warning(f"Community ID {community_id_str} not found in embeddings")
+                return None
 
-        best_community = None
-        best_score = similarity_score
-        for comm_id, desc_embedding in self.description_embeddings.items():
-            score = util.cos_sim(content_embedding, desc_embedding)[0][0].item()
-            print(f"Community ID: {comm_id}, Name: {self.community_info[comm_id]['name']}, Score: {score}")
-            if score > best_score:
-                best_score = score
-                best_community = comm_id
+            # Calculate similarity with target community
+            description_embedding = self.description_embeddings[community_id_str]
+            similarity_score = cos_sim(content_embedding, description_embedding)[0][0].item()
+            threshold = 0.10
+            is_relevant = similarity_score >= threshold
 
-        suggested_community = None
-        if not is_relevant and best_community and best_community != community_id_str:
-            suggested_community = {
-                "id": int(best_community),
-                "name": self.community_info[best_community]["name"],
-                "similarity_score": best_score
+            logger.info(f"Content: {content}")
+            logger.info(f"Target Community ID: {community_id_str}, Name: {self.community_info[community_id_str]['name']}, Description: {self.community_info[community_id_str]['description']}")
+            logger.info(f"Similarity Score: {similarity_score}, Threshold: {threshold}, Is Relevant: {is_relevant}")
+
+            # Find the best matching community
+            best_community = None
+            best_score = similarity_score
+            for comm_id, desc_embedding in self.description_embeddings.items():
+                score = cos_sim(content_embedding, desc_embedding)[0][0].item()
+                logger.info(f"Community ID: {comm_id}, Name: {self.community_info[comm_id]['name']}, Score: {score}")
+                if score > best_score:
+                    best_score = score
+                    best_community = comm_id
+
+            suggested_community = None
+            if not is_relevant and best_community and best_community != community_id_str:
+                suggested_community = {
+                    "id": int(best_community),
+                    "name": self.community_info[best_community]["name"],
+                    "similarity_score": best_score
+                }
+                logger.info(f"Suggested Community: ID {suggested_community['id']}, Name: {suggested_community['name']}, Score: {best_score}")
+
+            # Find similar questions
+            similar_questions = []
+            if is_relevant:
+                logger.info(f"Searching for similar questions in community ID: {community_id}")
+                questions = self.db.questions.find({"communityId": int(community_id)})
+                for question in questions:
+                    question_text = question["title"] + " " + question["content"]
+                    try:
+                        question_embedding = self.model.encode(question_text, convert_to_tensor=True)
+                        question_score = cos_sim(content_embedding, question_embedding)[0][0].item()
+                        if question_score >= 0.3:
+                            similar_questions.append({
+                                "id": str(question["_id"]),
+                                "title": question["title"],
+                                "content": question["content"],
+                                "similarity_score": question_score
+                            })
+                            logger.info(f"Found similar question ID: {str(question['_id'])}, Score: {question_score}")
+                    except Exception as e:
+                        logger.error(f"Error processing question ID {str(question['_id'])}: {str(e)}")
+                similar_questions = sorted(similar_questions, key=lambda x: x["similarity_score"], reverse=True)[:3]
+                logger.info(f"Found {len(similar_questions)} similar questions")
+
+            return {
+                "is_relevant": is_relevant,
+                "similarity_score": similarity_score,
+                "suggested_community": suggested_community,
+                "similar_questions": similar_questions
             }
-
-        similar_questions = []
-        if is_relevant:
-            questions = self.db.questions.find({"communityId": int(community_id)})
-            for question in questions:
-                question_text = question["title"] + " " + question["content"]
-                question_embedding = self.model.encode(question_text, convert_to_tensor=True)
-                question_score = util.cos_sim(content_embedding, question_embedding)[0][0].item()
-                if question_score >= 0.3:
-                    similar_questions.append({
-                        "id": str(question["_id"]),
-                        "title": question["title"],
-                        "content": question["content"],
-                        "similarity_score": question_score
-                    })
-            similar_questions = sorted(similar_questions, key=lambda x: x["similarity_score"], reverse=True)[:3]
-
-        return {
-            "is_relevant": is_relevant,
-            "similarity_score": similarity_score,
-            "suggested_community": suggested_community,
-            "similar_questions": similar_questions
-        }
+        except Exception as e:
+            logger.error(f"Error in validate_content: {str(e)}")
+            raise

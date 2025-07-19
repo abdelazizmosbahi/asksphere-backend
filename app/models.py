@@ -325,12 +325,18 @@ class AIContentFilter:
 
 class CommunityValidator:
     def __init__(self, db):
-        logger.info("Initializing CommunityValidator")
         self.db = db
         self.model = None
+        logger.info("Initializing CommunityValidator")
         self.description_embeddings = {}
         self.community_info = {}
         self._load_community_info()
+
+    def load_model(self):
+        if self.model is None:
+            logging.info("Loading sentence-transformers model")
+            self.model = SentenceTransformer('all-MiniLM-L6-v2')
+
 
     def _load_community_info(self):
         """Load community information from the database without encoding."""
@@ -365,8 +371,9 @@ class CommunityValidator:
                 logger.error(f"Failed to load model or encode embeddings: {str(e)}")
                 raise
 
-    def validate_content(self, content, community_id):
+    def validate(self, content, community_id):
         """Validate content relevance to a community and find similar questions."""
+        self.load_model()
         try:
             logger.info(f"Validating content for community ID: {community_id}")
             # Lazy-load model and embeddings
@@ -440,6 +447,7 @@ class CommunityValidator:
                 "suggested_community": suggested_community,
                 "similar_questions": similar_questions
             }
+            return True
         except Exception as e:
             logger.error(f"Error in validate_content: {str(e)}")
             raise

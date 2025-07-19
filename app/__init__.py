@@ -1,12 +1,13 @@
 import logging
 from datetime import datetime
 import os
-from flask import Flask
+from flask import Config, Flask
 from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt
 from flask_login import LoginManager
 from flask_cors import CORS
 from app.utils.ai_content_filter import AIContentFilter
+from models import CommunityValidator
 
 # Configure logging
 logging.basicConfig(
@@ -17,10 +18,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.config.from_object(Config)
 logger.info("Starting Flask app initialization")
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['MONGO_URI'] = os.getenv('MONGO_URI')
-CORS(app, resources={r"/*": {"origins": "https://wonderful-sky-054cb711e.2.azurestaticapps.net"}}, supports_credentials=True)
+CORS(app, resources={r"/*": {"origins": "https://wonderful-sky-054cb711e.2.azurestaticapps.net"}})
+ai_content_filter = AIContentFilter()
+community_validator = CommunityValidator(mongo.db)
+from app import routes
 mongo = PyMongo(app)
 logger.info("MongoDB initialized")
 bcrypt = Bcrypt(app)

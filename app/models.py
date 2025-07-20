@@ -323,7 +323,7 @@ class AIContentFilter:
 class CommunityValidator:
     def __init__(self, db):
         model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'model_cache', 'models--sentence-transformers--all-mpnet-base-v2', 'snapshots', '12e86a3c702fc3c50205a8db88f0ec7c0b6b94a0')
-        self.model = SentenceTransformer(model_path)
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
         self.db = db
         self.description_embeddings = {}
         self.community_info = {}

@@ -72,3 +72,11 @@ def debug():
         "env": dict(os.environ),
         "mongo_available": mongo.db is not None if 'mongo' in globals() else False
     })
+
+@app.route('/health')
+def health():
+    return jsonify({'status': 'healthy'}), 200
+
+@app.route('/')
+def index():
+    return "Welcome to Asksphere!"

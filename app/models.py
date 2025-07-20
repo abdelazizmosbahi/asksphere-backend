@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from bson import ObjectId
 from detoxify import Detoxify
 from sentence_transformers import SentenceTransformer, util
+import os
 
 class User:
     def __init__(self, id, username, password, avatar=None):
@@ -321,7 +322,8 @@ class AIContentFilter:
 
 class CommunityValidator:
     def __init__(self, db):
-        self.model = SentenceTransformer('all-mpnet-base-v2')
+        model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'model_cache', 'models--sentence-transformers--all-mpnet-base-v2', 'snapshots', '12e86a3c702fc3c50205a8db88f0ec7c0b6b94a0')
+        self.model = SentenceTransformer(model_path)
         self.db = db
         self.description_embeddings = {}
         self.community_info = {}

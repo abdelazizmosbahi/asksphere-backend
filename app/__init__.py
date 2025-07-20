@@ -67,10 +67,17 @@ def create_app():
 
 @app.route('/debug')
 def debug():
+    try:
+        from detoxify import Detoxify
+        from sentence_transformers import SentenceTransformer
+        ai_models = "loaded"
+    except Exception as e:
+        ai_models = f"failed: {str(e)}"
     return jsonify({
         "status": "running",
         "env": dict(os.environ),
-        "mongo_available": mongo.db is not None if 'mongo' in globals() else False
+        "mongo_available": mongo.db is not None if 'mongo' in globals() else False,
+        "ai_models": ai_models
     })
 
 @app.route('/health')

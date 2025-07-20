@@ -1,1 +1,1 @@
-web: bash /home/site/wwwroot/startup.sh
+web: waitress-serve --port=$PORT app:app

@@ -12,3 +12,5 @@ azure-keyvault-secrets==4.7.0
 opencensus-ext-azure==1.1.7
 python-dotenv==1.0.1
 gunicorn==20.1.0
+transformers==4.35.2
+tokenizers==0.14.1

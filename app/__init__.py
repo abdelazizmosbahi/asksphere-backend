@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 from flask import Flask
 from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt
@@ -6,6 +8,7 @@ from flask_login import LoginManager
 from datetime import datetime
 from flask_cors import CORS  # Import CORS
 from app.utils.ai_content_filter import AIContentFilter  # Import the AIContentFilter class
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['MONGO_URI'] = os.getenv('MONGO_URI')

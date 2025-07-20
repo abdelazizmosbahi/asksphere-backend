@@ -1,12 +1,14 @@
 import base64
 from app import app, mongo, bcrypt, login_manager
-from flask import json, request, jsonify
+from flask import Blueprint, json, request, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import User, Member, Community, Question, Answer, Vote, Member_Community, AIContentFilter, CommunityValidator
 from datetime import datetime, timedelta
 from bson import ObjectId
 from flask_cors import CORS  # Import CORS
 from app import ai_content_filter
+from . import mongo
+routes = Blueprint('routes', __name__)
 
 # Configure CORS to allow requests from http://localhost:4200 with credentials
 cors = CORS(app, resources={r"/*": {"origins": ["https://wonderful-sky-054cb711e.2.azurestaticapps.net", "http://localhost:4200"]}})
@@ -76,6 +78,14 @@ BADGES = [
     }
 ]
 
+
+@routes.route('/communities')
+def get_communities():
+    try:
+        communities = mongo.db.communities.find()
+        return jsonify([community for community in communities])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 @app.route('/')
 def home():
     print("home route called")

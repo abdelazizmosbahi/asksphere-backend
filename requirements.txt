@@ -14,3 +14,4 @@ python-dotenv==1.0.1
 gunicorn==20.1.0
 transformers==4.35.2
 tokenizers==0.14.1
+

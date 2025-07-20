@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 load_dotenv()
-from flask import Flask
+from flask import Flask, jsonify
 from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt
 from flask_login import LoginManager
@@ -64,3 +64,11 @@ def create_app():
     app.register_blueprint(main_blueprint)
 
     return app
+
+@app.route('/debug')
+def debug():
+    return jsonify({
+        "status": "running",
+        "env": dict(os.environ),
+        "mongo_available": mongo.db is not None if 'mongo' in globals() else False
+    })

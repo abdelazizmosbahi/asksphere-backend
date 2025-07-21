@@ -7,4 +7,3 @@ flaskenv/
 *.pyo 
 *.pyd 
 .env 
-model_cache/

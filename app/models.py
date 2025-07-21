@@ -322,9 +322,9 @@ class AIContentFilter:
 
 class CommunityValidator:
     def __init__(self, db):
-        model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'model_cache', 'models--sentence-transformers--all-MiniLM-L6-v2', 'snapshots', 'c9745ed1d9f207416be6d2e6f8de32d1f16199bf')
+        model_path = '/root/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/c9745ed1d9f207416be6d2e6f8de32d1f16199bf'
         if not os.path.exists(model_path):
-            raise ValueError(f"Model path {model_path} does not exist")
+            model_path = 'all-MiniLM-L6-v2'  # Fallback to download if not cached
         self.model = SentenceTransformer(model_path)
         self.db = db
         self.description_embeddings = {}

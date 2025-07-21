@@ -1,8 +1,8 @@
 FROM python:3.12-slim
 WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt --index-url https://download.pytorch.org/whl/cpu
 COPY . .
-RUN pip install --no-cache-dir -r requirements.txt
-# Copy pre-downloaded model
 COPY model_cache /root/.cache/huggingface/hub
 ENV PORT=8000
 EXPOSE 8000

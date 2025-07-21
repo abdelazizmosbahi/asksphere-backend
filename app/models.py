@@ -322,8 +322,10 @@ class AIContentFilter:
 
 class CommunityValidator:
     def __init__(self, db):
-        model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'model_cache', 'models--sentence-transformers--all-mpnet-base-v2', 'snapshots', '12e86a3c702fc3c50205a8db88f0ec7c0b6b94a0')
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'model_cache', 'models--sentence-transformers--all-MiniLM-L6-v2', 'snapshots', 'c9745ed1d9f207416be6d2e6f8de32d1f16199bf')
+        if not os.path.exists(model_path):
+            raise ValueError(f"Model path {model_path} does not exist")
+        self.model = SentenceTransformer(model_path)
         self.db = db
         self.description_embeddings = {}
         self.community_info = {}

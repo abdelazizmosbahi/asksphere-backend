@@ -17,8 +17,8 @@ class Notification:
         self.id = id
         self.memberId = memberId
         self.message = message
-        self.type = type  # e.g., "answer", "inappropriate", "badge", "ban", "warning", "vote"
-        self.relatedId = relatedId  # e.g., questionId, answerId, badge name
+        self.type = type
+        self.relatedId = relatedId
         self.read = read
         self.createdAt = createdAt if createdAt else datetime.utcnow()
         self.communityId = communityId
@@ -90,7 +90,6 @@ class Member(UserMixin):
                 {"_id": ObjectId(self.id)},
                 {"$set": {"badges": self.badges}}
             )
-            # Create a notification for the new badge
             self.createNotification(
                 message=f"You earned a new badge: {badge}!",
                 type="badge",
@@ -146,6 +145,7 @@ class Member(UserMixin):
             type=type,
             relatedId=relatedId,
             read=False,
+            createdAt=datetime.utcnow(),
             communityId=communityId
         )
         db.notifications.insert_one({
@@ -237,10 +237,9 @@ class AIContentFilter:
             print(f"Detoxify results: {results}")
             toxicity_score = results['toxicity']
             
-            if toxicity_score > 0.5:  # Aligned with routes.py threshold
+            if toxicity_score > 0.5:
                 keys = [key for key, value in results.items() if value > 0.5 and key != 'toxicity']
                 print(f"Inappropriate content detected. Keys: {keys}")
-                # Log to inappropriate_content
                 db.inappropriate_content.insert_one({
                     "content": content,
                     "memberId": memberId,
@@ -251,14 +250,12 @@ class AIContentFilter:
                     "keys": keys or ["toxicity"],
                     "isProcessed": False
                 })
-                # Increment restrictionLevel
                 user = db.users.find_one({"_id": memberId})
                 restriction_level = (user.get('restrictionLevel', 0) or 0) + 1
                 db.users.update_one(
                     {"_id": memberId},
                     {"$set": {"restrictionLevel": restriction_level}}
                 )
-                # Create notification
                 attempts_left = 5 - restriction_level
                 feedback = f"You have {attempts_left} attempts left before a ban in community {communityId}."
                 if attempts_left <= 2 and attempts_left > 0:
@@ -273,7 +270,6 @@ class AIContentFilter:
                         "expiresAt": ban_expires,
                         "reason": "Exceeded inappropriate content attempts"
                     })
-                    # Clear inappropriate_content for this user and community
                     db.inappropriate_content.delete_many({
                         "memberId": memberId,
                         "communityId": communityId
@@ -284,7 +280,6 @@ class AIContentFilter:
                         {"$set": {"restrictionLevel": 0}}
                     )
                 
-                # Notify the user
                 db.notifications.insert_one({
                     "memberId": memberId,
                     "type": "inappropriate",
@@ -323,9 +318,12 @@ class AIContentFilter:
 class CommunityValidator:
     def __init__(self, db):
         model_path = '/root/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/c9745ed1d9f207416be6d2e6f8de32d1f16199bf'
-        if not os.path.exists(model_path):
-            model_path = 'all-MiniLM-L6-v2'  # Fallback to download if not cached
-        self.model = SentenceTransformer(model_path)
+        try:
+            self.model = SentenceTransformer(model_path)
+        except Exception as e:
+            print(f"Failed to load cached model at {model_path}: {str(e)}")
+            print("Falling back to downloading all-MiniLM-L6-v2")
+            self.model = SentenceTransformer('all-MiniLM-L6-v2', cache_folder='/root/.cache/huggingface/hub')
         self.db = db
         self.description_embeddings = {}
         self.community_info = {}

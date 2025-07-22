@@ -6,3 +6,4 @@ __pycache__
 .gitignore
 venv
 *.log
+# model_cache/

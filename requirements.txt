@@ -1,7 +1,7 @@
-Werkzeug==2.2.2
+flask==3.0.3
 flask-pymongo==2.3.0
 Flask-Bcrypt==1.0.1
-flask-login==0.6.2
+flask-login==0.6.3
 detoxify==0.5.2
 azure-identity==1.12.0
 azure-keyvault-secrets==4.7.0
@@ -17,5 +17,5 @@ waitress==3.0.0
 torch==2.7.1
 torchvision==0.22.1
 flask_cors
-flask==3.0.3
+Werkzeug==3.0.4
 transformers==4.47.0

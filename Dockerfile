@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu --timeout 1000 --retries 5
 COPY . .
 RUN mkdir -p /root/.cache/huggingface/hub /root/.cache/torch/hub/checkpoints
 RUN ls -la model_cache/hub model_cache/torch/checkpoints || echo "model_cache directories not found"

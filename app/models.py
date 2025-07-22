@@ -227,7 +227,7 @@ class Member_Community:
 class AIContentFilter:
     def __init__(self, modelVersion):
         self.modelVersion = modelVersion
-        self.model = Detoxify('original')
+        self.model = Detoxify('original', checkpoint='/root/.cache/torch/hub/checkpoints/toxic_original-c1212f89.ckpt')
 
     def filterContent(self, content, memberId, questionId, answerId, communityId, db):
         print(f"Filtering content: {content}")

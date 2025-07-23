@@ -225,10 +225,16 @@ class Member_Community:
         })
 
 class AIContentFilter:
-    def __init__(self, modelVersion):
-        self.modelVersion = modelVersion
-        self.model = Detoxify('original', checkpoint='/root/.cache/torch/hub/checkpoints/toxic_original-c1212f89.ckpt')
-
+    def __init__(self, modelVersion="1.0"):
+        # Determine checkpoint path based on environment
+        base_path = os.path.join(os.path.dirname(__file__), '..', 'model_cache', 'torch', 'checkpoints')
+        if os.name == 'nt':  # Windows
+            base_path = os.path.normpath(base_path)
+        else:  # Linux/container
+            base_path = '/root/.cache/torch/hub/checkpoints'
+        checkpoint_path = os.path.join(base_path, 'toxic_original-c1212f89.ckpt')
+        self.model = Detoxify('original', checkpoint=checkpoint_path)
+        
     def filterContent(self, content, memberId, questionId, answerId, communityId, db):
         print(f"Filtering content: {content}")
         print(f"MemberId: {memberId}, QuestionId: {questionId}, AnswerId: {answerId}, CommunityId: {communityId}")

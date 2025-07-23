@@ -10,7 +10,6 @@ from app import ai_content_filter
 from . import mongo
 routes = Blueprint('routes', __name__)
 
-CORS(app, resources={r"/*": {"origins": ["https://wonderful-sky-054cb711e.2.azurestaticapps.net", "http://localhost:4200"]}})# Initialize AIContentFilter and CommunityValidator
 ai_filter = AIContentFilter(modelVersion="1.0")
 community_validator = CommunityValidator(mongo.db)
 

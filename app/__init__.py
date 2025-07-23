@@ -12,7 +12,7 @@ from app.utils.ai_content_filter import AIContentFilter  # Import the AIContentF
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['MONGO_URI'] = os.getenv('MONGO_URI')
-# cors = CORS(app, resources={r"/*": {"origins": ["https://wonderful-sky-054cb711e.2.azurestaticapps.net", "http://localhost:4200"]}})
+print(f"MONGO_URI: {os.getenv('MONGO_URI')}")
 CORS(app, resources={r"/*": {"origins": ["https://wonderful-sky-054cb711e.2.azurestaticapps.net", "http://localhost:4200"]}})
 mongo = PyMongo(app)
 bcrypt = Bcrypt(app)

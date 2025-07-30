@@ -6,8 +6,10 @@ from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt
 from flask_login import LoginManager
 from datetime import datetime
-from flask_cors import CORS  # Import CORS
-from app.utils.ai_content_filter import AIContentFilter  # Import the AIContentFilter class
+from flask_cors import CORS
+from app.utils.ai_content_filter import AIContentFilter
+import ssl
+from waitress import serve
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
@@ -21,7 +23,6 @@ login_manager.login_view = 'login'
 ai_content_filter = AIContentFilter(modelVersion='original')
 from app import routes
 
-# Initialize the database with some sample data
 def init_db():
     if mongo.db.users.count_documents({}) == 0:
         hashed_password = bcrypt.generate_password_hash('password123').decode('utf-8')
@@ -54,16 +55,11 @@ init_db()
 def create_app():
     app = Flask(__name__)
     app.config.from_object('config.Config')
-
-    # Initialize extensions
     mongo.init_app(app)
     login_manager.init_app(app)
     login_manager.login_view = 'login'
-
-# Register blueprints
     from app.routes import main as main_blueprint
     app.register_blueprint(main_blueprint)
-
     return app
 
 @app.route('/debug')
@@ -88,3 +84,8 @@ def health():
 @app.route('/')
 def index():
     return "Welcome to Asksphere!"
+
+if __name__ == '__main__':
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ssl_context.load_cert_chain(certfile='/app/asksphere-cert.pem', keyfile='/app/asksphere-key.pem')
+    serve(app, host='0.0.0.0', port=int(os.getenv('PORT', 5000)), ssl_context=ssl_context)

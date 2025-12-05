@@ -1,0 +1,10 @@
+__pycache__/ 
+venv/ 
+instance/ 
+uploads/ 
+flaskenv/
+*.pyc 
+*.pyo 
+*.pyd 
+.env 
+model_cache/
